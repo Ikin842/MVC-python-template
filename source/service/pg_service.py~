@@ -1,0 +1,48 @@
+import pandas as pd
+from sqlalchemy.dialects.postgresql import insert
+from config.pg_config import PostgresConfig
+from config import pg_connection
+
+
+class IngestPostgres:
+    def __init__(self):
+        self.__connect = pg_connection
+
+    @staticmethod
+    def _insert_on_conflict_upsert(table, conn, keys, data_iter):
+        data = [dict(zip(keys, row)) for row in data_iter]
+        insert_statement = insert(table.table).values(data)
+        conflict_update = insert_statement.on_conflict_do_update(
+            constraint=f"{table.table.name}_pkey",
+            set_={column.key: column for column in insert_statement.excluded},
+        )
+        result = conn.execute(conflict_update)
+        return result.rowcount
+
+    def ingest(self, datas: list, table_name: str):
+        df = pd.DataFrame(datas)
+        df = df.drop_duplicates(subset=['id'], keep='last')
+
+        row_count = df.to_sql(
+            table_name,
+            self.__connect,
+            if_exists="append",
+            index=False,
+            schema="bronze",
+            method=self._insert_on_conflict_upsert
+        )
+        self.__connect.commit()
+        self.__connect.connection.close()
+        return row_count
+
+    def read_query(self, query, indeks):
+        df = pd.read_sql_query(query, self.__connect)
+        return df
+    
+    def query_data(self, query: str):
+        engine = create_engine(self.__url)
+        conn = engine.connect()
+
+        result_df = pd.read_sql_query(query, conn)
+        conn.connection.close()
+        return result_df

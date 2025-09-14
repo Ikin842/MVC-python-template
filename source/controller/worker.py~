@@ -1,0 +1,40 @@
+import json
+import typer
+from elasticsearch import helpers
+from config.base import settings
+# from config.es_config import ElasticConfig
+from config.es_config import elastic_conn
+
+app = typer.Typer()
+
+@app.command()
+def run():
+    Worker().main()
+
+class Worker:
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    def main(self):
+        elastic_conection = elastic_conn()
+        index_name = "pln-issue-202501"
+
+        query = {
+          "query": {
+            "match_all": {}
+          }
+        }
+
+        scan_results = helpers.scan(
+            elastic_conection,
+            query=query,
+            index=index_name,
+            size=1000,
+            scroll="60m",
+            request_timeout=3600
+        )
+
+        for i, hit in enumerate(scan_results):
+            source = hit['_source']
+            print(json.dumps(source, indent=4, ensure_ascii=False))
+            exit()
